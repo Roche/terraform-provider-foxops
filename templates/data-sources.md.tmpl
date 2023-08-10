@@ -1,0 +1,21 @@
+---
+title: "{{.Name}}"
+subcategory: ""
+description: |-
+{{ .Description | plainmarkdown | trimspace | prefixlines "  " }}
+---
+
+{{ .Description | trimspace }}
+
+{{ if .HasExample -}}
+## Example Usage
+{{ tffile .ExampleFile }}
+{{- end }}
+
+{{ .SchemaMarkdown | trimspace }}
+
+{{ if .HasImport -}}
+## Import
+Import is supported using the following syntax:
+{{ codefile "shell" .ImportFile}}
+{{- end }}
