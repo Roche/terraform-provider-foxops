@@ -165,13 +165,16 @@ func (r *incarnationResource) Read(ctx context.Context, req resource.ReadRequest
 
 	id := data.Id.ValueString()
 
-	inc := getIncarnation(
+	var inc Incarnation
+	var diags diag.Diagnostics
+	inc, diags = getIncarnation(
 		ctx,
 		r.client,
-		resp.Diagnostics,
 		IncarnationId(id),
 		data.WaitForMRStatus,
 	)
+	resp.Diagnostics.Append(diags...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -249,7 +252,9 @@ func (r *incarnationResource) Update(ctx context.Context, req resource.UpdateReq
 		return
 	}
 
-	inc = getIncarnation(ctx, r.client, resp.Diagnostics, inc.Id, data.WaitForMRStatus)
+	var diags diag.Diagnostics
+	inc, diags = getIncarnation(ctx, r.client, inc.Id, data.WaitForMRStatus)
+	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
 	}

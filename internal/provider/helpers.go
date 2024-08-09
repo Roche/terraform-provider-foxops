@@ -12,10 +12,9 @@ import (
 func getIncarnation(
 	ctx context.Context,
 	client FoxopsClient,
-	diags diag.Diagnostics,
 	id IncarnationId,
 	waitForStatus *waitForStatusMRModel,
-) (inc Incarnation) {
+) (inc Incarnation, diags diag.Diagnostics) {
 	var err error
 	if waitForStatus == nil {
 		tflog.Info(ctx, "fetching the incarnation", map[string]interface{}{"id": id})

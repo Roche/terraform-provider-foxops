@@ -173,13 +173,15 @@ func (ds *incarnationDataSource) Read(ctx context.Context, req datasource.ReadRe
 
 	id := data.Id.ValueString()
 
-	inc := getIncarnation(
+	var inc Incarnation
+	var diags diag.Diagnostics
+	inc, diags = getIncarnation(
 		ctx,
 		ds.client,
-		resp.Diagnostics,
 		IncarnationId(id),
 		data.WaitForMRStatus,
 	)
+	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -204,7 +206,6 @@ func (ds *incarnationDataSource) Read(ctx context.Context, req datasource.ReadRe
 		data.MergeRequestStatus = types.StringValue(*inc.MergeRequestStatus)
 	}
 
-	var diags diag.Diagnostics
 	templateData := map[string]string{}
 	for key, value := range inc.TemplateData {
 		switch value := value.(type) {
