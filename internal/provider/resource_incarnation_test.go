@@ -2,8 +2,10 @@ package provider_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"reflect"
+	"regexp"
 	"testing"
 
 	"github.com/Roche/terraform-provider-foxops/internal/helpers"
@@ -15,7 +17,7 @@ import (
 	"go.uber.org/mock/gomock"
 )
 
-func incarnationResourceConfigFactory(name string, req provider.CreateIncarnationRequest) string {
+func IncarnationResourceConfigFactory(name string, req provider.CreateIncarnationRequest) string {
 	result := providerConfig
 	result += fmt.Sprintf(`resource "foxops_incarnation" "%s" {`, name) + "\n"
 	result += fmt.Sprintf(`  incarnation_repository = "%s"`, req.IncarnationRepository) + "\n"
@@ -80,7 +82,7 @@ func TestAccEdgeClusterResource_ShouldCreateOrImportAnIncarnation(t *testing.T) 
 		ProtoV6ProviderFactories: setup.testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
-				Config: incarnationResourceConfigFactory("test", req),
+				Config: IncarnationResourceConfigFactory("test", req),
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttr("foxops_incarnation.test", "id", string(incarnation.Id)),
 					resource.TestCheckResourceAttr("foxops_incarnation.test", "incarnation_repository", incarnation.IncarnationRepository),
@@ -295,7 +297,7 @@ func TestIncarnationResourceChanges(t *testing.T) {
 					ProtoV6ProviderFactories: setup.testAccProtoV6ProviderFactories,
 					Steps: []resource.TestStep{
 						{
-							Config: incarnationResourceConfigFactory("test", req1),
+							Config: IncarnationResourceConfigFactory("test", req1),
 							Check: resource.ComposeTestCheckFunc(
 								resource.TestCheckResourceAttr("foxops_incarnation.test", "id", id1),
 								resource.TestCheckResourceAttr("foxops_incarnation.test", "incarnation_repository", req1.IncarnationRepository),
@@ -306,7 +308,7 @@ func TestIncarnationResourceChanges(t *testing.T) {
 							),
 						},
 						{
-							Config: incarnationResourceConfigFactory("test", req2),
+							Config: IncarnationResourceConfigFactory("test", req2),
 							Check: resource.ComposeTestCheckFunc(
 								resource.TestCheckResourceAttr("foxops_incarnation.test", "id", id2),
 								resource.TestCheckResourceAttr("foxops_incarnation.test", "incarnation_repository", req2.IncarnationRepository),
@@ -321,4 +323,92 @@ func TestIncarnationResourceChanges(t *testing.T) {
 			},
 		)
 	}
+}
+
+func TestAccEdgeClusterResource_ClientErrorShouldNotDeleteState(t *testing.T) {
+	setup := newTestProviderSetup(t)
+
+	incarnation := provider.Incarnation{
+		Id:                        provider.IncarnationId("1234"),
+		IncarnationRepository:     "inc/repo",
+		TemplateRepository:        "template/repo",
+		TemplateRepositoryVersion: "template/repo/version",
+		TargetDirectory:           ".",
+		CommitSha:                 "12345678",
+		CommitUrl:                 "template/repo/commit",
+		MergeRequestId:            helpers.Addr("1234"),
+		MergeRequestStatus:        helpers.Addr("merged"),
+		MergeRequestUrl:           helpers.Addr("inc/repo/mr!1234"),
+		TemplateData: map[string]interface{}{
+			"hello": "World!",
+		},
+	}
+
+	req := provider.CreateIncarnationRequest{
+		IncarnationRepository: incarnation.IncarnationRepository,
+		TargetDirectory:       &incarnation.TargetDirectory,
+		TemplateRepository:    incarnation.TemplateRepository,
+		UpdateIncarnationRequest: provider.UpdateIncarnationRequest{
+			TemplateData:              incarnation.TemplateData,
+			TemplateRepositoryVersion: incarnation.TemplateRepositoryVersion,
+		},
+	}
+
+	setup.client.EXPECT().
+		CreateIncarnation(gomock.Any(), req).
+		Return(incarnation, nil)
+
+	setup.client.EXPECT().
+		GetIncarnation(gomock.Any(), incarnation.Id).
+		Return(incarnation, nil)
+
+	setup.client.EXPECT().
+		GetIncarnation(gomock.Any(), incarnation.Id).
+		Return(provider.Incarnation{}, errors.New("test"))
+
+	setup.client.EXPECT().
+		DeleteIncarnation(gomock.Any(), incarnation.Id).
+		Return(nil)
+
+	hello, ok := incarnation.TemplateData["hello"].(string)
+	require.True(t, ok)
+	resource.Test(t, resource.TestCase{
+		IsUnitTest:               true,
+		ProtoV6ProviderFactories: setup.testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: IncarnationResourceConfigFactory("test", req),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("foxops_incarnation.test", "id", string(incarnation.Id)),
+					resource.TestCheckResourceAttr("foxops_incarnation.test", "incarnation_repository", incarnation.IncarnationRepository),
+					resource.TestCheckResourceAttr("foxops_incarnation.test", "template_repository", incarnation.TemplateRepository),
+					resource.TestCheckResourceAttr("foxops_incarnation.test", "template_repository_version", incarnation.TemplateRepositoryVersion),
+					resource.TestCheckResourceAttr("foxops_incarnation.test", "target_directory", incarnation.TargetDirectory),
+					resource.TestCheckResourceAttr("foxops_incarnation.test", "template_data.hello", hello),
+					resource.TestCheckResourceAttr("foxops_incarnation.test", "commit_sha", incarnation.CommitSha),
+					resource.TestCheckResourceAttr("foxops_incarnation.test", "commit_url", incarnation.CommitUrl),
+					resource.TestCheckResourceAttr("foxops_incarnation.test", "merge_request_id", *incarnation.MergeRequestId),
+					resource.TestCheckResourceAttr("foxops_incarnation.test", "merge_request_status", *incarnation.MergeRequestStatus),
+					resource.TestCheckResourceAttr("foxops_incarnation.test", "merge_request_url", *incarnation.MergeRequestUrl),
+				),
+			},
+			{
+				RefreshState: true,
+				ExpectError:  regexp.MustCompile("failed to retrieve incarnation"),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("foxops_incarnation.test", "id", string(incarnation.Id)),
+					resource.TestCheckResourceAttr("foxops_incarnation.test", "incarnation_repository", incarnation.IncarnationRepository),
+					resource.TestCheckResourceAttr("foxops_incarnation.test", "template_repository", incarnation.TemplateRepository),
+					resource.TestCheckResourceAttr("foxops_incarnation.test", "template_repository_version", incarnation.TemplateRepositoryVersion),
+					resource.TestCheckResourceAttr("foxops_incarnation.test", "target_directory", incarnation.TargetDirectory),
+					resource.TestCheckResourceAttr("foxops_incarnation.test", "template_data.hello", hello),
+					resource.TestCheckResourceAttr("foxops_incarnation.test", "commit_sha", incarnation.CommitSha),
+					resource.TestCheckResourceAttr("foxops_incarnation.test", "commit_url", incarnation.CommitUrl),
+					resource.TestCheckResourceAttr("foxops_incarnation.test", "merge_request_id", *incarnation.MergeRequestId),
+					resource.TestCheckResourceAttr("foxops_incarnation.test", "merge_request_status", *incarnation.MergeRequestStatus),
+					resource.TestCheckResourceAttr("foxops_incarnation.test", "merge_request_url", *incarnation.MergeRequestUrl),
+				),
+			},
+		},
+	})
 }
