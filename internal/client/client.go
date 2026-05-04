@@ -122,6 +122,11 @@ func (c *client) GetIncarnation(ctx context.Context, id provider.IncarnationId) 
 		return
 	}
 
+	if resp.StatusCode == http.StatusNotFound {
+		err = provider.ErrNotFound
+		return
+	}
+
 	err = errors.WithStack(c.checkResponseStatus(ctx, http.StatusOK, resp))
 	if err != nil {
 		return

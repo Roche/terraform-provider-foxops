@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
@@ -163,18 +164,26 @@ func (r *incarnationResource) Read(ctx context.Context, req resource.ReadRequest
 		return
 	}
 
-	id := data.Id.ValueString()
+	id := IncarnationId(data.Id.ValueString())
+
+	if data.WaitForMRStatus == nil {
+		inc, err := r.client.GetIncarnation(ctx, id)
+		if errors.Is(err, ErrNotFound) {
+			resp.State.RemoveResource(ctx)
+			return
+		}
+		if err != nil {
+			resp.Diagnostics.AddError("failed to retrieve incarnation", err.Error())
+			return
+		}
+		resp.Diagnostics.Append(r.setState(ctx, &resp.State, inc)...)
+		return
+	}
 
 	var inc Incarnation
 	var diags diag.Diagnostics
-	inc, diags = getIncarnation(
-		ctx,
-		r.client,
-		IncarnationId(id),
-		data.WaitForMRStatus,
-	)
+	inc, diags = getIncarnation(ctx, r.client, id, data.WaitForMRStatus)
 	resp.Diagnostics.Append(diags...)
-
 	if resp.Diagnostics.HasError() {
 		return
 	}
