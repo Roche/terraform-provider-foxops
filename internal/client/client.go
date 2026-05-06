@@ -51,7 +51,7 @@ func New(
 	token provider.ClientToken,
 	version provider.Version,
 	options ...ClientOption,
-) provider.FoxopsClient {
+) (provider.FoxopsClient, error) {
 	opts := &clientOptions{
 		Transport: http.DefaultTransport,
 	}
@@ -60,17 +60,17 @@ func New(
 		opt.apply(opts)
 	}
 
-	provider, err := securityprovider.NewSecurityProviderBearerToken(string(token))
+	secProvider, err := securityprovider.NewSecurityProviderBearerToken(string(token))
 	if err != nil {
-		panic(err)
+		return nil, errors.WithStack(err)
 	}
 
 	c, err := client_v1.NewClient(
 		string(endpoint),
-		client_v1.WithRequestEditorFn(provider.Intercept),
+		client_v1.WithRequestEditorFn(secProvider.Intercept),
 	)
 	if err != nil {
-		panic(err)
+		return nil, errors.WithStack(err)
 	}
 
 	retryableHttpClient := retryablehttp.NewClient()
@@ -80,7 +80,7 @@ func New(
 	}
 	c.Client = retryableHttpClient.StandardClient()
 
-	return &client{c}
+	return &client{c}, nil
 }
 
 func (c *client) checkResponseStatus(_ context.Context, expected int, resp *http.Response) (err error) {
@@ -149,7 +149,12 @@ func (c *client) GetIncarnationWithMergeRequestStatus(
 		if inc.MergeRequestStatus != nil && *inc.MergeRequestStatus == status {
 			return
 		}
-		time.Sleep(time.Second)
+		select {
+		case <-ctx.Done():
+			err = ctx.Err()
+			return
+		case <-time.After(time.Second):
+		}
 	}
 	return
 }
@@ -273,6 +278,10 @@ func (c *client) DeleteIncarnation(
 	)
 	if err != nil {
 		err = errors.WithStack(err)
+		return
+	}
+
+	if resp.StatusCode == http.StatusNotFound {
 		return
 	}
 

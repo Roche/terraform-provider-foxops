@@ -34,15 +34,9 @@ func main() {
 		context.Background(),
 		provider.New(
 			provider.Version(version),
-			provider.ClientConstructor(
-				func(
-					ce provider.ClientEndpoint,
-					ct provider.ClientToken,
-					v provider.Version,
-				) provider.FoxopsClient {
-					return client.New(ce, ct, v)
-				},
-			),
+			provider.ClientConstructor(func(ce provider.ClientEndpoint, ct provider.ClientToken, v provider.Version) (provider.FoxopsClient, error) {
+				return client.New(ce, ct, v)
+			}),
 			[]func() datasource.DataSource{
 				provider.NewIncarnationDataSource,
 			},

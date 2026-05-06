@@ -317,7 +317,6 @@ func (r *incarnationResource) setState(ctx context.Context, setter incarnationSt
 	}
 	data.TemplateData, diags = types.MapValueFrom(ctx, types.StringType, templateData)
 
-	diags.Append(diags...)
 	if diags.HasError() {
 		return
 	}

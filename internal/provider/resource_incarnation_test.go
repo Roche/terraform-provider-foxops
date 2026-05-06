@@ -532,3 +532,64 @@ func TestAccEdgeClusterResource_ClientErrorShouldNotDeleteState(t *testing.T) {
 		},
 	})
 }
+
+func TestAccIncarnationResource_DestroyAfterOutOfBandDeletionShouldSucceed(t *testing.T) {
+	setup := newTestProviderSetup(t)
+
+	incarnation := provider.Incarnation{
+		Id:                        provider.IncarnationId("1234"),
+		IncarnationRepository:     "inc/repo",
+		TemplateRepository:        "template/repo",
+		TemplateRepositoryVersion: "template/repo/version",
+		TargetDirectory:           ".",
+		CommitSha:                 "12345678",
+		CommitUrl:                 "template/repo/commit",
+		TemplateData:              map[string]interface{}{},
+	}
+
+	req := provider.CreateIncarnationRequest{
+		IncarnationRepository: incarnation.IncarnationRepository,
+		TargetDirectory:       &incarnation.TargetDirectory,
+		TemplateRepository:    incarnation.TemplateRepository,
+		UpdateIncarnationRequest: provider.UpdateIncarnationRequest{
+			TemplateData:              incarnation.TemplateData,
+			TemplateRepositoryVersion: incarnation.TemplateRepositoryVersion,
+		},
+	}
+
+	setup.client.EXPECT().
+		CreateIncarnation(gomock.Any(), req).
+		Return(incarnation, nil)
+
+	// Post-apply read.
+	setup.client.EXPECT().
+		GetIncarnation(gomock.Any(), incarnation.Id).
+		Return(incarnation, nil)
+
+	// Pre-destroy refresh.
+	setup.client.EXPECT().
+		GetIncarnation(gomock.Any(), incarnation.Id).
+		Return(incarnation, nil)
+
+	// Incarnation already gone when destroy runs — client returns nil (idempotent).
+	setup.client.EXPECT().
+		DeleteIncarnation(gomock.Any(), incarnation.Id).
+		Return(nil)
+
+	resource.Test(t, resource.TestCase{
+		IsUnitTest:               true,
+		ProtoV6ProviderFactories: setup.testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: IncarnationResourceConfigFactory("test", req),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("foxops_incarnation.test", "id", string(incarnation.Id)),
+				),
+			},
+			{
+				Config:  IncarnationResourceConfigFactory("test", req),
+				Destroy: true,
+			},
+		},
+	})
+}

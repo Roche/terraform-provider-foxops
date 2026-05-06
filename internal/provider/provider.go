@@ -24,7 +24,7 @@ type Version string
 
 type ClientEndpoint string
 type ClientToken string
-type ClientConstructor func(ClientEndpoint, ClientToken, Version) FoxopsClient
+type ClientConstructor func(ClientEndpoint, ClientToken, Version) (FoxopsClient, error)
 
 type foxopsProvider struct {
 	version     Version
@@ -157,14 +157,18 @@ func (p *foxopsProvider) Configure(ctx context.Context, req provider.ConfigureRe
 		return
 	}
 
-	client := p.clientCtor(
+	foxopsClient, err := p.clientCtor(
 		ClientEndpoint(endpoint),
 		ClientToken(token),
 		p.version,
 	)
+	if err != nil {
+		resp.Diagnostics.AddError("failed to initialise Foxops client", err.Error())
+		return
+	}
 
-	resp.DataSourceData = client
-	resp.ResourceData = client
+	resp.DataSourceData = foxopsClient
+	resp.ResourceData = foxopsClient
 }
 
 func (p *foxopsProvider) DataSources(ctx context.Context) []func() datasource.DataSource {

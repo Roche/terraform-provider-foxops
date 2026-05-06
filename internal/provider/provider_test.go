@@ -39,8 +39,8 @@ func newTestProviderSetup(
 			"foxops": providerserver.NewProtocol6WithError(
 				provider.New(
 					"test",
-					func(provider.ClientEndpoint, provider.ClientToken, provider.Version) provider.FoxopsClient {
-						return client
+					func(provider.ClientEndpoint, provider.ClientToken, provider.Version) (provider.FoxopsClient, error) {
+						return client, nil
 					},
 					[]func() datasource.DataSource{provider.NewIncarnationDataSource},
 					[]func() resource.Resource{provider.NewIncarnationResource},
