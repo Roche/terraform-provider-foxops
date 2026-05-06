@@ -166,29 +166,17 @@ func (r *incarnationResource) Read(ctx context.Context, req resource.ReadRequest
 
 	id := IncarnationId(data.Id.ValueString())
 
-	if data.WaitForMRStatus == nil {
-		inc, err := r.client.GetIncarnation(ctx, id)
-		if errors.Is(err, ErrNotFound) {
-			resp.State.RemoveResource(ctx)
-			return
-		}
-		if err != nil {
-			resp.Diagnostics.AddError("failed to retrieve incarnation", err.Error())
-			return
-		}
-		resp.Diagnostics.Append(r.setState(ctx, &resp.State, inc)...)
+	inc, err, diags := getIncarnation(ctx, r.client, id, data.WaitForMRStatus)
+	if errors.Is(err, ErrNotFound) {
+		resp.State.RemoveResource(ctx)
 		return
 	}
-
-	var inc Incarnation
-	var diags diag.Diagnostics
-	inc, diags = getIncarnation(ctx, r.client, id, data.WaitForMRStatus)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	resp.Diagnostics.Append(r.setState(ctx, &resp.State, inc)...)
+	resp.Diagnostics.Append(r.setState(ctx, &resp.State, &data, inc)...)
 }
 
 func (r *incarnationResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
@@ -222,7 +210,7 @@ func (r *incarnationResource) Create(ctx context.Context, req resource.CreateReq
 		return
 	}
 
-	resp.Diagnostics.Append(r.setState(ctx, &resp.State, inc)...)
+	resp.Diagnostics.Append(r.setState(ctx, &resp.State, &data, inc)...)
 }
 
 func (r *incarnationResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
@@ -256,19 +244,22 @@ func (r *incarnationResource) Update(ctx context.Context, req resource.UpdateReq
 		return
 	}
 
-	resp.Diagnostics.Append(r.setState(ctx, &resp.State, inc)...)
+	resp.Diagnostics.Append(r.setState(ctx, &resp.State, &data, inc)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	var diags diag.Diagnostics
-	inc, diags = getIncarnation(ctx, r.client, inc.Id, data.WaitForMRStatus)
+	inc, notFound, diags := getIncarnation(ctx, r.client, inc.Id, data.WaitForMRStatus)
+	if notFound != nil {
+		resp.Diagnostics.AddError("failed to retrieve incarnation after update", notFound.Error())
+		return
+	}
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	resp.Diagnostics.Append(r.setState(ctx, &resp.State, inc)...)
+	resp.Diagnostics.Append(r.setState(ctx, &resp.State, &data, inc)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -292,9 +283,7 @@ func (r *incarnationResource) ImportState(ctx context.Context, req resource.Impo
 	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
 }
 
-func (r *incarnationResource) setState(ctx context.Context, setter incarnationStateSetter, inc Incarnation) (diags diag.Diagnostics) {
-	var data incarnationResourceModel
-
+func (r *incarnationResource) setState(ctx context.Context, setter incarnationStateSetter, data *incarnationResourceModel, inc Incarnation) (diags diag.Diagnostics) {
 	data.Id = types.StringValue(string(inc.Id))
 	data.IncarnationRepository = types.StringValue(inc.IncarnationRepository)
 	data.TemplateRepositoryVersion = types.StringValue(inc.TemplateRepositoryVersion)

@@ -8,7 +8,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
-	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
@@ -173,14 +172,11 @@ func (ds *incarnationDataSource) Read(ctx context.Context, req datasource.ReadRe
 
 	id := data.Id.ValueString()
 
-	var inc Incarnation
-	var diags diag.Diagnostics
-	inc, diags = getIncarnation(
-		ctx,
-		ds.client,
-		IncarnationId(id),
-		data.WaitForMRStatus,
-	)
+	inc, notFound, diags := getIncarnation(ctx, ds.client, IncarnationId(id), data.WaitForMRStatus)
+	if notFound != nil {
+		resp.Diagnostics.AddError("incarnation not found", notFound.Error())
+		return
+	}
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
