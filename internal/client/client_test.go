@@ -29,12 +29,13 @@ func setupClientTest(t *testing.T) *clientTestSetup {
 
 	mockRoundTripper := client_mocks.NewMockRoundTripper(ctrl)
 	token := "dev-token"
-	c := client.New(
+	c, err := client.New(
 		provider.ClientEndpoint("http://localhost"),
 		provider.ClientToken(token),
 		"testing",
 		client.ClientTransport(mockRoundTripper),
 	)
+	require.NoError(t, err)
 
 	return &clientTestSetup{
 		Client:              c,
@@ -451,6 +452,36 @@ func TestClient_DeleteIncarnation_ShouldSucceedWhenReceivingOk(
 
 	response := &http.Response{
 		StatusCode: http.StatusNoContent,
+		Body:       io.NopCloser(bytes.NewBuffer([]byte{})),
+		Header:     make(http.Header),
+	}
+
+	setup.MockRoundTripper.EXPECT().
+		RoundTrip(
+			client_mocks.NewRequestMatcher(
+				client_mocks.RequestMethod(http.MethodDelete),
+				client_mocks.RequestPathf("/api/incarnations/%s", id),
+				setup.AuthorizationHeader,
+			),
+		).
+		Return(response, nil)
+
+	err := setup.Client.DeleteIncarnation(ctx, id)
+
+	require.NoError(t, err)
+}
+
+func TestClient_DeleteIncarnation_ShouldSucceedWhenReceivingNotFound(
+	t *testing.T,
+) {
+	setup := setupClientTest(t)
+
+	ctx := context.Background()
+
+	id := provider.IncarnationId("1234")
+
+	response := &http.Response{
+		StatusCode: http.StatusNotFound,
 		Body:       io.NopCloser(bytes.NewBuffer([]byte{})),
 		Header:     make(http.Header),
 	}
