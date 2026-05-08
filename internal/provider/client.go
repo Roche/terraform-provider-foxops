@@ -2,7 +2,10 @@ package provider
 
 import (
 	"context"
+	"errors"
 )
+
+var ErrNotFound = errors.New("not found")
 
 type IncarnationId string
 
